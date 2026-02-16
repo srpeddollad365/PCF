@@ -2,9 +2,9 @@ name: Build & Integrate Power Platform Solution to Test (DEV branch, Windows)
 
 on:
   push:
-    branches: [ "DEV" ]         # Only fire on DEV, not main
+    branches: [ "DEV" ]            # Only run on DEV
   pull_request:
-    branches: [ "DEV" ]         # Only validate PRs targeting DEV
+    branches: [ "DEV" ]            # Only PRs targeting DEV
   workflow_dispatch:
     inputs:
       releaseType:
@@ -65,8 +65,11 @@ jobs:
           dotnet restore
           dotnet build --configuration Debug --no-restore
 
+      # ---- Install PAC before using any powerplatform-actions ----
+      - name: Install Power Platform CLI (PAC)
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
       # ---- PACK SOLUTION (unmanaged + managed) ----
-      # Ensure solution-folder points to the folder that contains Solution.xml/Customizations.
       - name: Pack unmanaged solution
         id: pack_unmanaged
         uses: microsoft/powerplatform-actions/pack-solution@v1
@@ -109,10 +112,6 @@ jobs:
       - name: Choose solution ZIP
         id: choose
         run: |
-          # Default behavior:
-          # - PR validation -> import MANAGED
-          # - Push to DEV branch -> import MANAGED (best practice for higher envs)
-          # - Manual dispatch -> respect input (managed/unmanaged)
           $event = "${{ github.event_name }}"
           if ($event -eq "workflow_dispatch") {
             $type = "${{ github.event.inputs.releaseType }}".ToLower()
@@ -122,6 +121,7 @@ jobs:
               $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
             }
           } else {
+            # For pushes/PRs to DEV, default to MANAGED for higher environment imports
             $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
           }
 
@@ -131,6 +131,10 @@ jobs:
             exit 1
           }
           "path=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # Install PAC on this job too (each job runs on a fresh runner)
+      - name: Install Power Platform CLI (PAC)
+        uses: microsoft/powerplatform-actions/actions-install@v1
 
       - name: Import solution to TEST
         uses: microsoft/powerplatform-actions/import-solution@v1
