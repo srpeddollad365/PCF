@@ -1,0 +1,61 @@
+name: Build PCF & Solution (Windows)
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Use .NET SDK 8.x
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Verify root folder is PCF
+        run: |
+          Write-Host "Checking that current directory is the project root named 'PCF'..."
+          $rootName = Split-Path -Leaf (Get-Location)
+          Write-Host "Current directory: $rootName"
+          if ($rootName -ne "PCF") {
+            Write-Error "ERROR: This workflow must run from a folder named 'PCF'. Current: $rootName"
+            exit 1
+          }
+
+      - name: Build BB_PCF (npm install & npm run build)
+        working-directory: BB_PCF
+        run: |
+          if (Test-Path package-lock.json) {
+            Write-Host "Lockfile found -> running 'npm ci'"
+            npm ci
+          } else {
+            Write-Host "No lockfile -> running 'npm install'"
+            npm install
+          }
+          npm run build
+
+      - name: Build BB_PCF_Solution (dotnet build)
+        working-directory: BB_PCF_Solution
+        run: |
+          dotnet restore
+          dotnet build --configuration Debug --no-restore
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BB_PCF_Solution
+          path: BB_PCF_Solution/bin/**/*
