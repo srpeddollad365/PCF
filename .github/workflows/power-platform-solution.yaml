@@ -74,14 +74,14 @@ jobs:
         id: pack_unmanaged
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
-          solution-folder: BB_PCF_Solution
+          solution-folder: BB_PCF_Solution/src
           solution-file: out/BB_PCF_Solution_Unmanaged.zip
 
       - name: Pack managed solution
         id: pack_managed
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
-          solution-folder: BB_PCF_Solution
+          solution-folder: BB_PCF_Solution/src
           solution-file: out/BB_PCF_Solution_Managed.zip
           managed: true
 
