@@ -9,7 +9,7 @@
 
   <PropertyGroup>
     <Name>BB_PCF</Name>
-    <ProjectGuid>ff0f36df-4083-4803-9779-fc793b336f0e</ProjectGuid>
+    <ProjectGuid>6f7dee0c-870b-4a9f-accd-dce682ab2d04</ProjectGuid>
     <OutputPath>$(MSBuildThisFileDirectory)out\controls</OutputPath>
   </PropertyGroup>
 

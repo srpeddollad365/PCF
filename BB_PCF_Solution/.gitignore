@@ -4,5 +4,5 @@
 /bin
 /obj
 
-# MSBuild Binary and Structured Logs
+# MSBuild Binary and Structured Log
 *.binlog
