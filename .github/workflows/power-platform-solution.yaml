@@ -3,7 +3,6 @@
           # app-id: ${{ secrets.PP_APP_ID }}
           # client-secret: ${{ secrets.PP_CLIENT_SECRET }}
 
-
 name: Build & Integrate Power Platform Solution to Test (DEV branch, Windows)
 
 on:
