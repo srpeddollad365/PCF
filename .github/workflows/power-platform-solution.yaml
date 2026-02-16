@@ -1,12 +1,20 @@
-name: Build PCF & Solution (Windows)
+name: Build & Integrate Power Platform Solution to Test (DEV branch, Windows)
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "DEV" ]         # Only fire on DEV, not main
   pull_request:
-    branches: [ "main" ]
+    branches: [ "DEV" ]         # Only validate PRs targeting DEV
+  workflow_dispatch:
+    inputs:
+      releaseType:
+        description: 'Which ZIP to import into Test? (managed|unmanaged)'
+        required: true
+        default: 'managed'
 
 jobs:
-  build:
+  build-pack:
+    name: Build PCF & Solution, then Pack
     runs-on: windows-latest
     defaults:
       run:
@@ -20,6 +28,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            BB_PCF/package-lock.json
 
       - name: Use .NET SDK 8.x
         uses: actions/setup-dotnet@v4
@@ -54,8 +65,84 @@ jobs:
           dotnet restore
           dotnet build --configuration Debug --no-restore
 
-      - name: Upload build artifacts
+      # ---- PACK SOLUTION (unmanaged + managed) ----
+      # Ensure solution-folder points to the folder that contains Solution.xml/Customizations.
+      - name: Pack unmanaged solution
+        id: pack_unmanaged
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: BB_PCF_Solution
+          solution-file: out/BB_PCF_Solution_Unmanaged.zip
+
+      - name: Pack managed solution
+        id: pack_managed
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: BB_PCF_Solution
+          solution-file: out/BB_PCF_Solution_Managed.zip
+          managed: true
+
+      - name: Upload build & pack artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BB_PCF_Solution
-          path: BB_PCF_Solution/bin/**/*
+          name: BB_PCF_Build_and_Solutions_DEV
+          path: |
+            BB_PCF_Solution/bin/**/*
+            out/BB_PCF_Solution_Managed.zip
+            out/BB_PCF_Solution_Unmanaged.zip
+          if-no-files-found: warn
+
+  import-to-test:
+    name: Import to Power Platform TEST environment
+    needs: build-pack
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: BB_PCF_Build_and_Solutions_DEV
+          path: artifact
+
+      - name: Choose solution ZIP
+        id: choose
+        run: |
+          # Default behavior:
+          # - PR validation -> import MANAGED
+          # - Push to DEV branch -> import MANAGED (best practice for higher envs)
+          # - Manual dispatch -> respect input (managed/unmanaged)
+          $event = "${{ github.event_name }}"
+          if ($event -eq "workflow_dispatch") {
+            $type = "${{ github.event.inputs.releaseType }}".ToLower()
+            if ($type -eq "unmanaged") {
+              $zip = "artifact/out/BB_PCF_Solution_Unmanaged.zip"
+            } else {
+              $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
+            }
+          } else {
+            $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
+          }
+
+          if (!(Test-Path $zip)) {
+            Write-Error "Expected solution file not found: $zip"
+            Get-ChildItem -Path artifact -Recurse
+            exit 1
+          }
+          "path=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Import solution to TEST
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+          tenant-id: ${{ secrets.PP_TENANT_ID }}
+          app-id: ${{ secrets.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+
+          solution-file: ${{ steps.choose.outputs.path }}
+          publish-customizations: true
+          overwrite-unmanaged-customizations: false   # recommended for higher envs
+          activate-plugins: true
+          skip-dependency-check: false
+          max-async-wait: 60
