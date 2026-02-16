@@ -162,52 +162,42 @@ name: Build & Deploy Power Platform Solution (DEV → TEST)
 on:
   push:
     branches: [ "DEV" ]
-  pull_request:
-    branches: [ "DEV" ]
   workflow_dispatch:
     inputs:
       releaseType:
-        description: "Which ZIP to import into TEST? (managed|unmanaged)"
+        description: "Import type (managed|unmanaged)"
         required: true
-        default: "managed"
+        default: "unmanaged"
 
 jobs:
-  build-pack:
-    name: Build PCF & Pack Solution
+  build:
+    name: Build PCF & Solution
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
 
     steps:
-      # -------------------------------------------------------
       # Checkout
-      # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------------
-      # Node (for PCF)
-      # -------------------------------------------------------
-      - name: Setup Node.js
+      # Setup Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "18"
           cache: npm
           cache-dependency-path: BB_PCF/package-lock.json
 
-      # -------------------------------------------------------
-      # .NET (for solution project)
-      # -------------------------------------------------------
+      # Setup .NET
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.x"
+          dotnet-version: "8.x"
 
-      # -------------------------------------------------------
       # Build PCF
-      # -------------------------------------------------------
-      - name: Build PCF control
+      - name: Build PCF
         working-directory: BB_PCF
         run: |
           if (Test-Path package-lock.json) {
@@ -217,107 +207,44 @@ jobs:
           }
           npm run build
 
-      # -------------------------------------------------------
-      # Build Solution Project
-      # -------------------------------------------------------
-      - name: Build solution project
+      # Build Solution (.cdsproj automatically creates ZIP)
+      - name: Build Solution Project
         working-directory: BB_PCF_Solution
         run: |
           dotnet restore
           dotnet build --configuration Debug --no-restore
 
-      # -------------------------------------------------------
-      # Install PAC
-      # -------------------------------------------------------
-      - name: Install Power Platform CLI
-        uses: microsoft/powerplatform-actions/actions-install@v1
-
-      # -------------------------------------------------------
-      # IMPORTANT FIX:
-      # Pack from bin/Debug/<SolutionFolder>
-      # -------------------------------------------------------
-      - name: Pack UNMANAGED solution
-        uses: microsoft/powerplatform-actions/pack-solution@v1
-        with:
-          solution-folder: BB_PCF_Solution/bin/Debug/BB_PCF_Solution
-          solution-file: out/BB_PCF_Solution_Unmanaged.zip
-
-      - name: Pack MANAGED solution
-        uses: microsoft/powerplatform-actions/pack-solution@v1
-        with:
-          solution-folder: BB_PCF_Solution/bin/Debug/BB_PCF_Solution
-          solution-file: out/BB_PCF_Solution_Managed.zip
-          managed: true
-
-      # -------------------------------------------------------
-      # Upload artifacts
-      # -------------------------------------------------------
-      - name: Upload artifacts
+      # Upload only the generated ZIP
+      - name: Upload solution artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BB_PCF_Build_and_Solutions_DEV
-          path: |
-            out/BB_PCF_Solution_Unmanaged.zip
-            out/BB_PCF_Solution_Managed.zip
+          name: BB_PCF_Solution_Zip
+          path: BB_PCF_Solution/bin/Debug/BB_PCF_Solution.zip
           if-no-files-found: error
 
+
   import-to-test:
-    name: Import to TEST Environment
-    needs: build-pack
+    name: Import to TEST
+    needs: build
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
 
     steps:
-      # -------------------------------------------------------
-      # Download artifact
-      # -------------------------------------------------------
-      - name: Download artifacts
+      # Download ZIP
+      - name: Download solution ZIP
         uses: actions/download-artifact@v4
         with:
-          name: BB_PCF_Build_and_Solutions_DEV
+          name: BB_PCF_Solution_Zip
           path: artifact
 
-      # -------------------------------------------------------
-      # Choose correct ZIP
-      # -------------------------------------------------------
-      - name: Choose solution ZIP
-        id: choose
-        run: |
-          $event = "${{ github.event_name }}"
-
-          if ($event -eq "workflow_dispatch") {
-            $type = "${{ github.event.inputs.releaseType }}".ToLower()
-            if ($type -eq "unmanaged") {
-              $zip = "artifact/BB_PCF_Solution_Unmanaged.zip"
-            } else {
-              $zip = "artifact/BB_PCF_Solution_Managed.zip"
-            }
-          }
-          else {
-            # Default for DEV → TEST
-            $zip = "artifact/BB_PCF_Solution_Managed.zip"
-          }
-
-          if (!(Test-Path $zip)) {
-            Write-Error "Solution ZIP not found: $zip"
-            Get-ChildItem artifact -Recurse
-            exit 1
-          }
-
-          "path=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      # -------------------------------------------------------
-      # Install PAC again (new runner)
-      # -------------------------------------------------------
+      # Install PAC
       - name: Install Power Platform CLI
         uses: microsoft/powerplatform-actions/actions-install@v1
 
-      # -------------------------------------------------------
-      # Import to TEST
-      # -------------------------------------------------------
-      - name: Import solution
+      # Import solution
+      - name: Import solution to TEST
         uses: microsoft/powerplatform-actions/import-solution@v1
         with:
           environment-url: ${{ secrets.PP_TEST_ENV_URL }}
@@ -325,10 +252,7 @@ jobs:
           app-id: ${{ secrets.PP_APP_ID }}
           client-secret: ${{ secrets.PP_CLIENT_SECRET }}
 
-          solution-file: ${{ steps.choose.outputs.path }}
-
+          solution-file: artifact/BB_PCF_Solution.zip
           publish-customizations: true
           overwrite-unmanaged-customizations: false
-          activate-plugins: true
-          skip-dependency-check: false
           max-async-wait: 60
