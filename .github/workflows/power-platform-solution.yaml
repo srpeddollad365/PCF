@@ -1,20 +1,188 @@
-name: Build & Integrate Power Platform Solution to Test (DEV branch, Windows)
+          # environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+          # tenant-id: ${{ secrets.PP_TENANT_ID }}
+          # app-id: ${{ secrets.PP_APP_ID }}
+          # client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+
+
+# name: Build & Integrate Power Platform Solution to Test (DEV branch, Windows)
+
+# on:
+#   push:
+#     branches: [ "DEV" ]            # Only run on DEV
+#   pull_request:
+#     branches: [ "DEV" ]            # Only PRs targeting DEV
+#   workflow_dispatch:
+#     inputs:
+#       releaseType:
+#         description: 'Which ZIP to import into Test? (managed|unmanaged)'
+#         required: true
+#         default: 'managed'
+
+# jobs:
+#   build-pack:
+#     name: Build PCF & Solution, then Pack
+#     runs-on: windows-latest
+#     defaults:
+#       run:
+#         shell: pwsh
+
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Use Node.js 18.x
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '18'
+#           cache: 'npm'
+#           cache-dependency-path: |
+#             BB_PCF/package-lock.json
+
+#       - name: Use .NET SDK 8.x
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           dotnet-version: '8.x'
+
+#       - name: Verify root folder is PCF
+#         run: |
+#           Write-Host "Checking that current directory is the project root named 'PCF'..."
+#           $rootName = Split-Path -Leaf (Get-Location)
+#           Write-Host "Current directory: $rootName"
+#           if ($rootName -ne "PCF") {
+#             Write-Error "ERROR: This workflow must run from a folder named 'PCF'. Current: $rootName"
+#             exit 1
+#           }
+
+#       - name: Build BB_PCF (npm install & npm run build)
+#         working-directory: BB_PCF
+#         run: |
+#           if (Test-Path package-lock.json) {
+#             Write-Host "Lockfile found -> running 'npm ci'"
+#             npm ci
+#           } else {
+#             Write-Host "No lockfile -> running 'npm install'"
+#             npm install
+#           }
+#           npm run build
+
+#       - name: Build BB_PCF_Solution (dotnet build)
+#         working-directory: BB_PCF_Solution
+#         run: |
+#           dotnet restore
+#           dotnet build --configuration Debug --no-restore
+
+#       # ---- Install PAC before using any powerplatform-actions ----
+#       - name: Install Power Platform CLI (PAC)
+#         uses: microsoft/powerplatform-actions/actions-install@v1
+
+#       # ---- PACK SOLUTION (unmanaged + managed) ----
+#       - name: Pack unmanaged solution
+#         id: pack_unmanaged
+#         uses: microsoft/powerplatform-actions/pack-solution@v1
+#         with:
+#           solution-folder: BB_PCF_Solution/src
+#           solution-file: out/BB_PCF_Solution_Unmanaged.zip
+
+#       - name: Pack managed solution
+#         id: pack_managed
+#         uses: microsoft/powerplatform-actions/pack-solution@v1
+#         with:
+#           solution-folder: BB_PCF_Solution/src
+#           solution-file: out/BB_PCF_Solution_Managed.zip
+#           managed: true
+
+#       - name: Upload build & pack artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: BB_PCF_Build_and_Solutions_DEV
+#           path: |
+#             BB_PCF_Solution/bin/**/*
+#             out/BB_PCF_Solution_Managed.zip
+#             out/BB_PCF_Solution_Unmanaged.zip
+#           if-no-files-found: warn
+
+#   import-to-test:
+#     name: Import to Power Platform TEST environment
+#     needs: build-pack
+#     runs-on: windows-latest
+#     defaults:
+#       run:
+#         shell: pwsh
+#     steps:
+#       - name: Download artifacts
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: BB_PCF_Build_and_Solutions_DEV
+#           path: artifact
+
+#       - name: Choose solution ZIP
+#         id: choose
+#         run: |
+#           $event = "${{ github.event_name }}"
+#           if ($event -eq "workflow_dispatch") {
+#             $type = "${{ github.event.inputs.releaseType }}".ToLower()
+#             if ($type -eq "unmanaged") {
+#               $zip = "artifact/out/BB_PCF_Solution_Unmanaged.zip"
+#             } else {
+#               $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
+#             }
+#           } else {
+#             # For pushes/PRs to DEV, default to MANAGED for higher environment imports
+#             $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
+#           }
+
+#           if (!(Test-Path $zip)) {
+#             Write-Error "Expected solution file not found: $zip"
+#             Get-ChildItem -Path artifact -Recurse
+#             exit 1
+#           }
+#           "path=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+#       # Install PAC on this job too (each job runs on a fresh runner)
+#       - name: Install Power Platform CLI (PAC)
+#         uses: microsoft/powerplatform-actions/actions-install@v1
+
+#       - name: Import solution to TEST
+#         uses: microsoft/powerplatform-actions/import-solution@v1
+#         with:
+#           environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+#           tenant-id: ${{ secrets.PP_TENANT_ID }}
+#           app-id: ${{ secrets.PP_APP_ID }}
+#           client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+
+#           solution-file: ${{ steps.choose.outputs.path }}
+#           publish-customizations: true
+#           overwrite-unmanaged-customizations: false   # recommended for higher envs
+#           activate-plugins: true
+#           skip-dependency-check: false
+#           max-async-wait: 60
+
+
+name: Build, Check, Import & Backup (DEV branch → Test)
 
 on:
   push:
-    branches: [ "DEV" ]            # Only run on DEV
+    branches: [ "DEV" ]          # Only run on DEV
   pull_request:
-    branches: [ "DEV" ]            # Only PRs targeting DEV
+    branches: [ "DEV" ]          # Only PRs targeting DEV
   workflow_dispatch:
     inputs:
       releaseType:
-        description: 'Which ZIP to import into Test? (managed|unmanaged)'
+        description: 'Import as (managed|unmanaged). Managed uses convert-to-managed on import.'
         required: true
         default: 'managed'
+      runSolutionChecker:
+        description: 'Run Solution Checker on the built zip? (true|false)'
+        required: true
+        default: 'true'
+      exportManagedBackup:
+        description: 'Export managed backup from Test after import? (true|false)'
+        required: true
+        default: 'true'
 
 jobs:
-  build-pack:
-    name: Build PCF & Solution, then Pack
+  build-zip:
+    name: Build PCF & .NET (produce solution zip)
     runs-on: windows-latest
     defaults:
       run:
@@ -29,124 +197,241 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: |
-            BB_PCF/package-lock.json
+          cache-dependency-path: BB_PCF/package-lock.json
 
       - name: Use .NET SDK 8.x
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.x'
 
-      - name: Verify root folder is PCF
+      - name: Verify repo root is PCF
         run: |
-          Write-Host "Checking that current directory is the project root named 'PCF'..."
           $rootName = Split-Path -Leaf (Get-Location)
-          Write-Host "Current directory: $rootName"
           if ($rootName -ne "PCF") {
-            Write-Error "ERROR: This workflow must run from a folder named 'PCF'. Current: $rootName"
+            Write-Error "This workflow must run from a folder named 'PCF'. Current: $rootName"
             exit 1
           }
 
+      # ---- Build the PCF (fresh artifact before solution packaging) ----
       - name: Build BB_PCF (npm install & npm run build)
         working-directory: BB_PCF
         run: |
-          if (Test-Path package-lock.json) {
-            Write-Host "Lockfile found -> running 'npm ci'"
-            npm ci
-          } else {
-            Write-Host "No lockfile -> running 'npm install'"
-            npm install
-          }
+          if (Test-Path package-lock.json) { npm ci } else { npm install }
           npm run build
 
-      - name: Build BB_PCF_Solution (dotnet build)
+      # ---- Build the Dataverse solution project ----
+      - name: Build BB_PCF_Solution (.NET Debug)
         working-directory: BB_PCF_Solution
         run: |
           dotnet restore
           dotnet build --configuration Debug --no-restore
 
-      # ---- Install PAC before using any powerplatform-actions ----
-      - name: Install Power Platform CLI (PAC)
-        uses: microsoft/powerplatform-actions/actions-install@v1
+      # ---- Locate the solution zip produced by the .NET build ----
+      - name: Find solution zip in bin folder
+        id: findzip
+        run: |
+          $zips = Get-ChildItem -Path "BB_PCF_Solution\bin" -Recurse -Filter *.zip
+          if (-not $zips) {
+            Write-Error "No solution zip found under BB_PCF_Solution\bin"
+            Get-ChildItem -Path "BB_PCF_Solution\bin" -Recurse
+            exit 1
+          }
+          # Prefer a zip that matches the project name if present
+          $preferred = $zips | Where-Object { $_.Name -ieq 'BB_PCF_Solution.zip' } | Select-Object -First 1
+          $zip = if ($preferred) { $preferred } else { $zips | Select-Object -First 1 }
+          Write-Host "Using solution zip: $($zip.FullName)"
+          "path=$($zip.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      # ---- PACK SOLUTION (unmanaged + managed) ----
-      - name: Pack unmanaged solution
-        id: pack_unmanaged
-        uses: microsoft/powerplatform-actions/pack-solution@v1
-        with:
-          solution-folder: BB_PCF_Solution/src
-          solution-file: out/BB_PCF_Solution_Unmanaged.zip
-
-      - name: Pack managed solution
-        id: pack_managed
-        uses: microsoft/powerplatform-actions/pack-solution@v1
-        with:
-          solution-folder: BB_PCF_Solution/src
-          solution-file: out/BB_PCF_Solution_Managed.zip
-          managed: true
-
-      - name: Upload build & pack artifacts
+      - name: Upload built solution zip
         uses: actions/upload-artifact@v4
         with:
-          name: BB_PCF_Build_and_Solutions_DEV
-          path: |
-            BB_PCF_Solution/bin/**/*
-            out/BB_PCF_Solution_Managed.zip
-            out/BB_PCF_Solution_Unmanaged.zip
-          if-no-files-found: warn
+          name: Built_Solution_Zip
+          path: ${{ steps.findzip.outputs.path }}
+          if-no-files-found: error
 
-  import-to-test:
-    name: Import to Power Platform TEST environment
-    needs: build-pack
+      - name: Upload PCF build outputs (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCF_Build_Output
+          path: |
+            BB_PCF/**/build/**
+            BB_PCF/**/dist/**
+          if-no-files-found: ignore
+
+  pack-from-src:
+    name: (Optional) Pack from unpacked src (skip if empty)
+    needs: build-zip
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
     steps:
-      - name: Download artifacts
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Power Platform CLI (PAC)
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Verify solution source exists
+        id: verify
+        run: |
+          $root = "BB_PCF_Solution/src"
+          if (!(Test-Path "$root/Solution.xml")) {
+            Write-Host "No Solution.xml under $root -> skipping pack."
+            "pack=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          if (!(Test-Path "$root/Other/Customizations.xml")) {
+            Write-Host "No Other/Customizations.xml under $root -> skipping pack."
+            "pack=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          # Heuristic: ensure it isn't an empty scaffold (look for actual components)
+          $hasComponents = (Test-Path "$root/Controls") -or (Test-Path "$root/WebResources") -or (Get-ChildItem "$root/Entities" -ErrorAction SilentlyContinue)
+          if (-not $hasComponents) {
+            Write-Host "No Controls/WebResources/Entities found -> src looks empty; skipping pack to avoid empty solution."
+            "pack=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          "pack=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Pack unmanaged (from src)
+        if: ${{ steps.verify.outputs.pack == 'true' }}
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: BB_PCF_Solution/src
+          solution-file:   out/BB_PCF_Solution_Unmanaged.zip
+          solution-type:   Unmanaged   # correct input name
+
+      - name: Pack managed (from src)
+        if: ${{ steps.verify.outputs.pack == 'true' }}
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: BB_PCF_Solution/src
+          solution-file:   out/BB_PCF_Solution_Managed.zip
+          solution-type:   Managed     # correct input name
+
+      - name: Upload packed zips (if any)
+        if: ${{ steps.verify.outputs.pack == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packed_From_Src
+          path: |
+            out/BB_PCF_Solution_Unmanaged.zip
+            out/BB_PCF_Solution_Managed.zip
+          if-no-files-found: warn
+
+  solution-checker:
+    name: Solution Checker (built zip)
+    needs: build-zip
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.runSolutionChecker == 'true' || github.event_name != 'workflow_dispatch' }}
+    steps:
+      - name: Download built zip
         uses: actions/download-artifact@v4
         with:
-          name: BB_PCF_Build_and_Solutions_DEV
+          name: Built_Solution_Zip
           path: artifact
 
-      - name: Choose solution ZIP
-        id: choose
+      - name: Install Power Platform CLI (PAC)
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Run Solution Checker
+        uses: microsoft/powerplatform-actions/check-solution@v1
+        with:
+          environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          solution-file:   artifact/**/*.zip
+          rule-set:        'Solution Checker'
+          output-directory: out/solution-checker
+
+      - name: Upload checker report
+        uses: actions/upload-artifact@v4
+        with:
+          name: Solution_Checker_Report
+          path: out/solution-checker
+          if-no-files-found: warn
+
+  import-to-test:
+    name: Import to Test (managed by default)
+    needs: [ build-zip, solution-checker ]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Download built zip
+        uses: actions/download-artifact@v4
+        with:
+          name: Built_Solution_Zip
+          path: artifact
+
+      - name: Resolve import preference
+        id: cfg
         run: |
-          $event = "${{ github.event_name }}"
-          if ($event -eq "workflow_dispatch") {
-            $type = "${{ github.event.inputs.releaseType }}".ToLower()
-            if ($type -eq "unmanaged") {
-              $zip = "artifact/out/BB_PCF_Solution_Unmanaged.zip"
-            } else {
-              $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
-            }
-          } else {
-            # For pushes/PRs to DEV, default to MANAGED for higher environment imports
-            $zip = "artifact/out/BB_PCF_Solution_Managed.zip"
-          }
+          $type = "${{ github.event.inputs.releaseType }}"
+          if ([string]::IsNullOrEmpty($type)) { $type = 'managed' }
+          $convert = ($type.ToLower() -eq 'managed')  # unmanaged zip -> managed import
+          "convert=$convert" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          if (!(Test-Path $zip)) {
-            Write-Error "Expected solution file not found: $zip"
-            Get-ChildItem -Path artifact -Recurse
-            exit 1
-          }
-          "path=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $zip = Get-ChildItem -Path artifact -Recurse -Filter *.zip | Select-Object -First 1
+          if (-not $zip) { Write-Error "No zip found under artifact/"; exit 1 }
+          "zip=$($zip.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Importing: $($zip.FullName)  (convert-to-managed: $convert)"
 
-      # Install PAC on this job too (each job runs on a fresh runner)
       - name: Install Power Platform CLI (PAC)
         uses: microsoft/powerplatform-actions/actions-install@v1
 
       - name: Import solution to TEST
         uses: microsoft/powerplatform-actions/import-solution@v1
         with:
+          # Auth
           environment-url: ${{ secrets.PP_TEST_ENV_URL }}
-          tenant-id: ${{ secrets.PP_TENANT_ID }}
-          app-id: ${{ secrets.PP_APP_ID }}
-          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
 
-          solution-file: ${{ steps.choose.outputs.path }}
-          publish-customizations: true
-          overwrite-unmanaged-customizations: false   # recommended for higher envs
-          activate-plugins: true
-          skip-dependency-check: false
-          max-async-wait: 60
+          # File
+          solution-file:   ${{ steps.cfg.outputs.zip }}
+
+          # Correct inputs per action.yml
+          activate-plugins:     true
+          force-overwrite:      false
+          skip-dependency-check:false
+          import-as-holding:    false
+          stage-and-upgrade:    false
+          publish-changes:      true
+          run-asynchronously:   false
+          max-async-wait-time:  60
+          convert-to-managed:   ${{ steps.cfg.outputs.convert }}
+          skip-lower-version:   false
+
+  export-backup:
+    name: Export backup from Test (post-import)
+    needs: import-to-test
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.exportManagedBackup == 'true' || github.event_name != 'workflow_dispatch' }}
+    steps:
+      - name: Install Power Platform CLI (PAC)
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Export managed solution (backup)
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          solution-name:   BB_PCF_Solution
+          managed:         true
+          solution-output-file: out/BB_PCF_Solution_Managed_AfterImport.zip
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Exported_from_Test
+          path: out/BB_PCF_Solution_Managed_AfterImport.zip
+          if-no-files-found: warn
