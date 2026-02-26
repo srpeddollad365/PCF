@@ -1,0 +1,122 @@
+/* ===== DataSetTable PCF Control Styles ===== */
+
+.bb-table-container {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+}
+
+/* ---------- Table ---------- */
+.bb-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #e1e1e1;
+    font-size: 13px;
+}
+
+/* ---------- Header ---------- */
+.bb-table thead {
+    background-color: #0078d4;
+    color: #fff;
+}
+
+.bb-table th {
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: relative;
+    transition: background-color 0.15s ease;
+}
+
+.bb-table th:hover {
+    background-color: #106ebe;
+}
+
+/* Sort arrow */
+.bb-sort-arrow {
+    margin-left: 6px;
+    font-size: 10px;
+    opacity: 0.85;
+}
+
+/* ---------- Body rows ---------- */
+.bb-table tbody tr {
+    border-bottom: 1px solid #e8e8e8;
+    transition: background-color 0.12s ease;
+}
+
+.bb-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.bb-table tbody tr:hover {
+    background-color: #edf5fd;
+}
+
+.bb-table td {
+    padding: 9px 14px;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+}
+
+/* ---------- Empty state ---------- */
+.bb-table-empty {
+    padding: 32px;
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+}
+
+/* ---------- Loading overlay ---------- */
+.bb-table-loading {
+    padding: 32px;
+    text-align: center;
+    color: #0078d4;
+    font-size: 14px;
+}
+
+/* ---------- Paging bar ---------- */
+.bb-table-paging {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #555;
+    border-top: 1px solid #e1e1e1;
+    background-color: #fafafa;
+}
+
+.bb-table-paging-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.bb-page-btn {
+    padding: 4px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    color: #333;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.bb-page-btn:hover:not(:disabled) {
+    background-color: #0078d4;
+    color: #fff;
+    border-color: #0078d4;
+}
+
+.bb-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
