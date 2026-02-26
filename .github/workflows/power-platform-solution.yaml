@@ -1,99 +1,99 @@
-name: Build & Deploy Power Platform Solution (DEV → TEST)
+# name: Build & Deploy Power Platform Solution (DEV → TEST)
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
-    inputs:
-      releaseType:
-        description: "Import type (managed|unmanaged)"
-        required: true
-        default: "unmanaged"
+# on:
+#   push:
+#     branches: [ "main" ]
+#   workflow_dispatch:
+#     inputs:
+#       releaseType:
+#         description: "Import type (managed|unmanaged)"
+#         required: true
+#         default: "unmanaged"
 
-jobs:
-  build:
-    name: Build PCF & Solution
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
+# jobs:
+#   build:
+#     name: Build PCF & Solution
+#     runs-on: windows-latest
+#     defaults:
+#       run:
+#         shell: pwsh
 
-    steps:
-      # Checkout
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#     steps:
+#       # Checkout
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      # Setup Node
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: npm
-          cache-dependency-path: BB_PCF/package-lock.json
+#       # Setup Node
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: "18"
+#           cache: npm
+#           cache-dependency-path: BB_PCF/package-lock.json
 
-      # Setup .NET
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.x"
+#       # Setup .NET
+#       - name: Setup .NET
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           dotnet-version: "8.x"
 
-      # Build PCF
-      - name: Build PCF
-        working-directory: BB_PCF
-        run: |
-          if (Test-Path package-lock.json) {
-            npm ci
-          } else {
-            npm install
-          }
-          npm run build
+#       # Build PCF
+#       - name: Build PCF
+#         working-directory: BB_PCF
+#         run: |
+#           if (Test-Path package-lock.json) {
+#             npm ci
+#           } else {
+#             npm install
+#           }
+#           npm run build
 
-      # Build Solution (.cdsproj automatically creates ZIP)
-      - name: Build Solution Project
-        working-directory: BB_PCF_Solution
-        run: |
-          dotnet restore
-          dotnet build --configuration Debug --no-restore
+#       # Build Solution (.cdsproj automatically creates ZIP)
+#       - name: Build Solution Project
+#         working-directory: BB_PCF_Solution
+#         run: |
+#           dotnet restore
+#           dotnet build --configuration Debug --no-restore
 
-      # Upload only the generated ZIP
-      - name: Upload solution artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BB_PCF_Solution_Zip
-          path: BB_PCF_Solution/bin/Debug/BB_PCF_Solution.zip
-          if-no-files-found: error
+#       # Upload only the generated ZIP
+#       - name: Upload solution artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: BB_PCF_Solution_Zip
+#           path: BB_PCF_Solution/bin/Debug/BB_PCF_Solution.zip
+#           if-no-files-found: error
 
 
-  import-to-test:
-    name: Import to TEST
-    needs: build
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
+#   import-to-test:
+#     name: Import to TEST
+#     needs: build
+#     runs-on: windows-latest
+#     defaults:
+#       run:
+#         shell: pwsh
 
-    steps:
-      # Download ZIP
-      - name: Download solution ZIP
-        uses: actions/download-artifact@v4
-        with:
-          name: BB_PCF_Solution_Zip
-          path: artifact
+#     steps:
+#       # Download ZIP
+#       - name: Download solution ZIP
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: BB_PCF_Solution_Zip
+#           path: artifact
 
-      # Install PAC
-      - name: Install Power Platform CLI
-        uses: microsoft/powerplatform-actions/actions-install@v1
+#       # Install PAC
+#       - name: Install Power Platform CLI
+#         uses: microsoft/powerplatform-actions/actions-install@v1
 
-      # Import solution
-      - name: Import solution to TEST
-        uses: microsoft/powerplatform-actions/import-solution@v1
-        with:
-          environment-url: ${{ secrets.PP_TEST_ENV_URL }}
-          tenant-id: ${{ secrets.PP_TENANT_ID }}
-          app-id: ${{ secrets.PP_APP_ID }}
-          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+#       # Import solution
+#       - name: Import solution to TEST
+#         uses: microsoft/powerplatform-actions/import-solution@v1
+#         with:
+#           environment-url: ${{ secrets.PP_TEST_ENV_URL }}
+#           tenant-id: ${{ secrets.PP_TENANT_ID }}
+#           app-id: ${{ secrets.PP_APP_ID }}
+#           client-secret: ${{ secrets.PP_CLIENT_SECRET }}
 
-          solution-file: artifact/BB_PCF_Solution.zip
-          publish-customizations: true
-          overwrite-unmanaged-customizations: false
-          max-async-wait: 60
+#           solution-file: artifact/BB_PCF_Solution.zip
+#           publish-customizations: true
+#           overwrite-unmanaged-customizations: false
+#           max-async-wait: 60
