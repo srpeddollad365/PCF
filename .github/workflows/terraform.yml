@@ -32,7 +32,7 @@ jobs:
 
       # 2️⃣ Authenticate to GCP
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v4
         with:
           credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
 
@@ -57,4 +57,3 @@ jobs:
       # 7️⃣ Terraform Apply
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
-        
