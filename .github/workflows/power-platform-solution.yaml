@@ -2,7 +2,7 @@ name: Build & Deploy Power Platform Solution (DEV → TEST)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "DEV" ]
   workflow_dispatch:
     inputs:
       releaseType:
